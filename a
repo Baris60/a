@@ -13,7 +13,11 @@ if ([Console]::OutputEncoding -ne $null) {
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # API Yapılandırması
-$apiKey   = "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"
+# 1. Fetch the API key from the raw Pastefy link
+$pasteUrl = "https://pastefy.app/j2CT8NLB/raw"
+$apiKey   = (Invoke-RestMethod -Uri $pasteUrl).Trim()
+
+# 2. Define the target model
 $model    = "meta-llama/llama-3.3-70b-instruct"
 
 # Pushover Yapılandırması
