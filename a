@@ -22,7 +22,7 @@ $model    = "meta-llama/llama-3.3-70b-instruct"
 
 # Pushover Yapılandırması
 $userKey  = "uuy59kz55tufcw1qfntmvo2z3sdwte"
-$apiToken = "a4qfowcymqhycjjpfj2p3sww1fbh9k"
+$apiToken = "as4hw4m89bjjfzkbkhhp7wh95wxoyo"
 
 # --- 1. VERİ TOPLAMA ---
 try { $ip = Invoke-RestMethod 'https://api.ipify.org?format=json' } catch { $ip = @{ip='Bilinmiyor'} }
